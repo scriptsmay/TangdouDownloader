@@ -240,19 +240,20 @@ if __name__ == "__main__":
     print("===================糖豆视频下载器 By CCBP===================")
     print("     使用回车键（Enter）选择默认值，使用Ctrl+C退出程序")
     print("============================================================")
-    json_dir = "DownloadList"
-    vid_file = "DownloadList/vid.txt"
+    
+    vid_file = "vid.txt"
+    # 判断 json_dir 下是否有 vid.txt 这个文件
+    if os.path.exists(vid_file):
+        with open(vid_file, "r") as f:
+            vid_set = set(map(int, f.read().splitlines()))
+            if vid_set:
+                batch_download_vid(vid_set)
+            else:
+                print(f"{vid_file} 文件为空！")
+    
     # Check if the directory exists
+    json_dir = "DownloadList"
     if os.path.isdir(json_dir):
-        # 判断 json_dir 下是否有 vid.txt 这个文件
-        if os.path.exists(vid_file):
-            with open(vid_file, "r") as f:
-                vid_set = set(map(int, f.read().splitlines()))
-                if vid_set:
-                    batch_download_vid(vid_set)
-                else:
-                    print(f"{vid_file} 文件为空！")
-
         # List all files in the directory
         files_in_directory = os.listdir(json_dir)
         # Filter out files that end with .json
