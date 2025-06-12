@@ -27,13 +27,20 @@ import signal
 
 downloading = False
 
-DEFAULT_PATH = "F:\\Media\\视频下载"
+DEFAULT_PATH = "/my_videos/糖豆广场舞"
+# 默认下载vid集合配置，一行一个vid。
+# 如果是项目目录下的vid.txt文件，这里可以留空
+DEFAULT_VID_FILE = "/ql/data/config/vid.txt"
 
 # 获取当前脚本所在目录
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
-# 构造目标文件或目录的相对路径
-# target_path = os.path.join(current_dir, 'file.txt')
+# 年份作为下级目录
+current_year = str(time.localtime().tm_year)
+
+message_content = []
+def send_notify():
+    QLAPI.notify("糖豆广场舞视频下载", "\n".join(message_content)) # type: ignore
 
 def downloader(name, url, path, max_retries=3, retry_delay=5):
     global downloading
@@ -50,7 +57,9 @@ def downloader(name, url, path, max_retries=3, retry_delay=5):
             if response.status_code == 200:
                 content_size = int(response.headers.get("content-length", 0))
                 if os.path.getsize(filepath) == content_size:
-                    print(f"{name}.mp4 already exists")
+                    msg = f"{name}.mp4 already exists"
+                    print(msg)
+                    message_content.append(msg)
                     return
         except RequestException:
             pass  # 如果HEAD请求失败，继续正常下载流程
@@ -81,7 +90,11 @@ def downloader(name, url, path, max_retries=3, retry_delay=5):
                         os.remove(filepath)  # 删除旧文件（如果有）
                     os.rename(temp_filepath, filepath)
                     end = time.time()
-                    print(f"{name}.mp4 download completed, time: {end - start:.2f}s")
+                    
+                    # print(f"{name}.mp4 download completed, time: {end - start:.2f}s")
+                    msg = f"{name}.mp4 download completed, time: {end - start:.2f}s"
+                    print(msg)
+                    message_content.append(msg)
                     return
                 else:
                     raise OSError("Download error, temp file does not exist")
@@ -103,65 +116,6 @@ def downloader(name, url, path, max_retries=3, retry_delay=5):
             else:
                 raise RuntimeError(f"Failed after {max_retries} attempts. Last error: {str(e)}")
         
-
-def separate_download():
-    while True:
-        url = input("请输入视频链接或vid编号:")
-        vid = tangdou.get_vid(url)
-        if vid is None:
-            print("请输入包含vid参数的视频链接或直接输入vid编号！")
-        else:
-            td = tangdou.VideoAPI()
-            try:
-                video_info = td.get_video_info(vid)
-            except (ValueError, RuntimeError) as e:
-                print(e)
-                print("请重试！")
-                continue
-            else:  # Successfully obtained video information
-                break
-    
-    urls_dict = video_info["urls"]
-    if not bool(urls_dict):
-            raise RuntimeError("URL列表为空！")
-    print("检测到以下可选清晰度：")
-    urls_list = list(enumerate(urls_dict))
-    for url in urls_list:
-        print(f"[{url[0]}] {url[1]}")
-    while True:
-        # index = input("请选择需要下载的清晰度(默认为全部下载):").replace("，", ",").split(",")
-        index = ["0"]
-        selected_urls = dict()
-        if index == ['']:
-            selected_urls = urls_dict.copy()
-            break
-        else:
-            for i in index:
-                i = str(i)
-                if i.isdigit():
-                    i = int(i)
-                    if i >= len(urls_list):
-                        print(f"序号 '{i}' 不存在，请重新输入！")
-                        break
-                    selected_urls[urls_list[i][1]] = urls_dict[urls_list[i][1]]
-                else:
-                    print("请输入清晰度序号，多选以逗号分隔！")
-                    break
-            else:
-                break
-
-    # path = input("请输入文件储存目录(默认为当前目录):")
-    path = DEFAULT_PATH
-    if path == "":
-        path = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(path, "Download")
-    if not os.path.exists(path):  # Create the directory if it does not exist
-        os.mkdir(path)
-    for clarity,url in selected_urls.items():
-        name = video_info["name"] + "_" + clarity
-        
-        downloader(name, url, path)
-
 def download_video(q: Queue):
     while True:
         video_info = q.get()
@@ -181,38 +135,10 @@ def download_video(q: Queue):
 
 download_queue = Queue()
 
-def batch_download(json_dir, max_threads=5):
-    global download_queue
-    path = input("请输入文件储存目录(默认为当前目录):")
-    if path == "":
-        path = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(path, "Download")
-    if not os.path.exists(path):  # Create the directory if it does not exist
-        os.mkdir(path)
-    vid_set = get_vid_set(json_dir)
-    td = tangdou.VideoAPI()
-    download_queue = Queue()
-    for _ in range(max_threads):  # Use 5 threads
-        t = threading.Thread(target=download_video, args=(download_queue,))
-        t.daemon = True
-        t.start()
-    for vid in vid_set:
-        try:
-            video_info = td.get_video_info(vid)
-            video_info["path"] = path
-            video_info["vid"] = vid
-            download_queue.put(video_info)
-        except (ValueError, RuntimeError) as e:
-            print(e)
-            print(f"vid: {vid} 下载失败！")
-            continue
-    download_queue.join()
-
 def batch_download_vid(vid_set, max_threads=5):
     global download_queue
-    path = DEFAULT_PATH
     
-    path = os.path.join(path, "Download")
+    path = os.path.join(DEFAULT_PATH, current_year)
     if not os.path.exists(path):  # Create the directory if it does not exist
         os.mkdir(path)
         
@@ -234,21 +160,6 @@ def batch_download_vid(vid_set, max_threads=5):
             continue
     download_queue.join()
 
-def signal_handler(signal, frame):
-    global download_queue
-    if not download_queue.empty() or downloading:
-        while True:
-            batch = input("下载尚未完成是否强制退出（y/n）:")
-            if batch == "y" or batch == "n":
-                break
-            print("输入有误，请重新输入！")
-        if batch == "n":
-            return
-    print("\n========================= 下载结束 =========================")
-    time.sleep(2)
-    sys.exit(0)
-
-signal.signal(signal.SIGINT,signal_handler)
 
 if __name__ == "__main__":
     print("===================糖豆视频下载器 By CCBP===================")
@@ -256,6 +167,8 @@ if __name__ == "__main__":
     print("============================================================")
     
     vid_file = os.path.join(current_dir, "vid.txt")
+    if DEFAULT_VID_FILE:
+        vid_file = DEFAULT_VID_FILE
     
     # 判断 json_dir 下是否有 vid.txt 这个文件
     if os.path.exists(vid_file):
@@ -263,21 +176,7 @@ if __name__ == "__main__":
             vid_set = set(map(int, f.read().splitlines()))
             if vid_set:
                 batch_download_vid(vid_set)
+                send_notify()
             else:
                 print(f"{vid_file} 文件为空！")
     
-    # Check if the directory exists
-    json_dir = os.path.join(current_dir, "DownloadList")
-    if os.path.isdir(json_dir):
-        # List all files in the directory
-        files_in_directory = os.listdir(json_dir)
-        # Filter out files that end with .json
-        json_files = [file for file in files_in_directory if file.endswith('.json')]
-        if json_files:
-            while True:
-                batch = input("检测到批量下载目录非空是否尝试批量下载（y/n）:")
-                if batch == "y" or batch == "n":
-                    break
-                print("输入有误，请重新输入！")
-            if batch == "y":
-                batch_download(json_dir)
