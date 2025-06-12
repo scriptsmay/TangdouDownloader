@@ -9,3 +9,4 @@ python-3.8.3-embed-amd64
 .vscode
 Bulk_Download
 DownloadList/*.json
+DownloadList/*.txt
